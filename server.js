@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 
 const scryptAsync = promisify(scrypt);
-const root = path.dirname(fileURLToPath(import.meta.url));
+const root = process.env.VERCEL ? process.cwd() : path.dirname(fileURLToPath(import.meta.url));
 const dataDir = path.join(root, "data");
 const usersFile = path.join(dataDir, "users.json");
 const port = Number(process.env.PORT || 5173);
@@ -20,9 +20,9 @@ loadEnv(path.join(root, ".env"));
 const sessions = new Map();
 let writeQueue = Promise.resolve();
 
-const server = createServer(async (req, res) => {
+export default async function handleRequest(req, res) {
   try {
-    const url = new URL(req.url || "/", `http://${req.headers.host}`);
+    const url = new URL(req.url || "/", `http://${req.headers.host || "localhost"}`);
     if (req.method === "GET" && url.pathname === "/api/animals") {
       sendJson(res, 200, { animals: readAnimals() });
       return;
@@ -44,11 +44,13 @@ const server = createServer(async (req, res) => {
     console.error(error);
     sendJson(res, 500, { error: "Щось пішло не так" });
   }
-});
+}
 
-server.listen(port, "127.0.0.1", () => {
-  console.log(`Dim Sirka is running at http://127.0.0.1:${port}`);
-});
+if (!process.env.VERCEL) {
+  createServer(handleRequest).listen(port, "127.0.0.1", () => {
+    console.log(`Dim Sirka is running at http://127.0.0.1:${port}`);
+  });
+}
 
 async function handleApi(req, res, pathname) {
   let body;
