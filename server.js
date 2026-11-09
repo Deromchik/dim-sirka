@@ -436,7 +436,7 @@ async function loadUserList() {
   if (process.env.BLOB_READ_WRITE_TOKEN) {
     try {
       const result = await get("users.json", { access: "private", useCache: false });
-      if (!result.stream) return [];
+      if (!result?.stream) return [];
       const parsed = JSON.parse(await new Response(result.stream).text());
       return Array.isArray(parsed) ? parsed : [];
     } catch (error) {
