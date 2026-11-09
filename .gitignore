@@ -2,4 +2,5 @@
 data/
 assets/uploads/
 node_modules
+dist
 .DS_Store

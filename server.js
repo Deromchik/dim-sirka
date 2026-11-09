@@ -580,6 +580,12 @@ function serveStatic(res, pathname) {
 }
 
 function staticFile(pathname) {
+  const candidate = staticCandidate(pathname);
+  if (!candidate || !existsSync(candidate)) return "";
+  return candidate;
+}
+
+function staticCandidate(pathname) {
   if (pathname === "/") return path.join(root, "index.html");
   if (pathname === "/admin" || pathname === "/admin/") return path.join(root, "admin", "index.html");
   if (pathname === "/admin/admin.css") return path.join(root, "admin", "admin.css");
@@ -589,7 +595,7 @@ function staticFile(pathname) {
   if (!pathname.startsWith("/assets/")) return "";
   const full = path.resolve(root, `.${pathname}`);
   const assetsRoot = path.join(root, "assets") + path.sep;
-  if (!full.startsWith(assetsRoot) || !existsSync(full)) return "";
+  if (!full.startsWith(assetsRoot)) return "";
   return full;
 }
 
