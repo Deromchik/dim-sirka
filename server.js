@@ -311,7 +311,10 @@ function mailErrorMessage(error) {
   if (/only send testing emails to your own email|domain is not verified/i.test(text)) {
     return "Resend поки надсилає тестові листи лише на пошту власника ключа. Підтверди домен у Resend, щоб писати на будь-яку адресу.";
   }
-  return "Не вдалося надіслати лист. Перевір ключ Resend і спробуй ще раз.";
+  const detail = text.replace(/re_[A-Za-z0-9_]+/g, "re_…").replace(/\s+/g, " ").slice(0, 180);
+  return detail
+    ? `Не вдалося надіслати лист. ${detail}`
+    : "Не вдалося надіслати лист. Перевір ключ Resend і спробуй ще раз.";
 }
 
 function appOrigin(req) {
