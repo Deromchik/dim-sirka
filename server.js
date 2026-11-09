@@ -1,4 +1,4 @@
-import { createHash, createHmac, randomBytes, randomInt, scrypt, timingSafeEqual } from "node:crypto";
+import { createHash, createHmac, randomBytes, scrypt, timingSafeEqual } from "node:crypto";
 import { createReadStream, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import path from "node:path";
@@ -11,10 +11,6 @@ const root = process.env.VERCEL ? process.cwd() : path.dirname(fileURLToPath(imp
 const dataDir = path.join(root, "data");
 const usersFile = path.join(dataDir, "users.json");
 const port = Number(process.env.PORT || 5173);
-const codeTtlMs = 15 * 60 * 1000;
-const resetTtlMs = 30 * 60 * 1000;
-const resendWaitMs = 30 * 1000;
-const maxCodeAttempts = 5;
 
 loadEnv(path.join(root, ".env"));
 
@@ -61,10 +57,8 @@ async function handleApi(req, res, pathname) {
     return;
   }
 
-  if (pathname === "/api/register") return register(res, body);
-  if (pathname === "/api/verify") return verifyEmail(req, res, body);
-  if (pathname === "/api/resend") return resendCode(res, body);
-  if (pathname === "/api/login") return login(res, body);
+  if (pathname === "/api/register") return register(req, res, body);
+  if (pathname === "/api/login") return login(req, res, body);
   if (pathname === "/api/logout") return logout(req, res);
   if (pathname === "/api/profile") return saveName(req, res, body);
   if (pathname === "/api/forgot") return forgotPassword(req, res, body);
@@ -72,7 +66,7 @@ async function handleApi(req, res, pathname) {
   sendJson(res, 404, { error: "Не знайдено" });
 }
 
-async function register(res, body) {
+async function register(req, res, body) {
   const email = normalizeEmail(body.email);
   const password = String(body.password || "");
   if (!isEmail(email)) {
@@ -89,102 +83,24 @@ async function register(res, body) {
     sendJson(res, 409, { error: "Ця пошта вже зареєстрована. Увійди або віднови пароль." });
     return;
   }
-  if (existing && Date.now() - existing.verifySentAt < resendWaitMs) {
-    sendJson(res, 429, { error: "Код уже надіслано. Зачекай пів хвилини і спробуй ще раз." });
-    return;
-  }
 
-  const code = String(randomInt(0, 1_000_000)).padStart(6, "0");
   const user = {
     email,
     passwordHash: await hashSecret(password),
     name: existing?.name || "",
-    verified: false,
-    verifyCodeHash: await hashSecret(code),
-    verifyExpires: Date.now() + codeTtlMs,
-    verifySentAt: Date.now(),
+    verified: true,
+    verifyCodeHash: "",
+    verifyExpires: 0,
+    verifySentAt: 0,
     verifyAttempts: 0,
     resetTokenHash: "",
     resetExpires: 0,
   };
-
-  try {
-    await sendEmail({
-      to: email,
-      subject: "Код підтвердження — Дім Сірка",
-      html: `<p>Твій код підтвердження: <strong>${code}</strong></p><p>Він діє 15 хвилин.</p>`,
-    });
-  } catch (error) {
-    sendJson(res, 502, { error: mailErrorMessage(error) });
-    return;
-  }
-
   await saveUser(user);
-  sendJson(res, 200, { ok: true });
+  sendJson(res, 200, { ok: true, name: user.name }, { "set-cookie": sessionCookie(createSession(email), req) });
 }
 
-async function verifyEmail(req, res, body) {
-  const email = normalizeEmail(body.email);
-  const code = String(body.code || "").trim();
-  const user = await findUser(email);
-  if (!user || user.verified || !user.verifyCodeHash || user.verifyExpires < Date.now()) {
-    sendJson(res, 400, { error: "Код не підходить або час його дії минув." });
-    return;
-  }
-  if (user.verifyAttempts >= maxCodeAttempts) {
-    sendJson(res, 400, { error: "Забагато спроб. Надішли код ще раз." });
-    return;
-  }
-
-  const matches = await verifySecret(code, user.verifyCodeHash);
-  if (!matches) {
-    user.verifyAttempts += 1;
-    await saveUser(user);
-    sendJson(res, 400, { error: "Код не підходить або час його дії минув." });
-    return;
-  }
-
-  user.verified = true;
-  user.verifyCodeHash = "";
-  user.verifyExpires = 0;
-  user.verifyAttempts = 0;
-  await saveUser(user);
-  sendJson(res, 200, { ok: true }, { "set-cookie": sessionCookie(createSession(email), req) });
-}
-
-async function resendCode(res, body) {
-  const email = normalizeEmail(body.email);
-  const user = await findUser(email);
-  if (!user || user.verified) {
-    sendJson(res, 400, { error: "Немає реєстрації, яка чекає на код." });
-    return;
-  }
-  if (Date.now() - user.verifySentAt < resendWaitMs) {
-    sendJson(res, 429, { error: "Код уже надіслано. Зачекай пів хвилини і спробуй ще раз." });
-    return;
-  }
-
-  const code = String(randomInt(0, 1_000_000)).padStart(6, "0");
-  try {
-    await sendEmail({
-      to: email,
-      subject: "Код підтвердження — Дім Сірка",
-      html: `<p>Твій код підтвердження: <strong>${code}</strong></p><p>Він діє 15 хвилин.</p>`,
-    });
-  } catch (error) {
-    sendJson(res, 502, { error: mailErrorMessage(error) });
-    return;
-  }
-
-  user.verifyCodeHash = await hashSecret(code);
-  user.verifyExpires = Date.now() + codeTtlMs;
-  user.verifySentAt = Date.now();
-  user.verifyAttempts = 0;
-  await saveUser(user);
-  sendJson(res, 200, { ok: true });
-}
-
-async function login(res, body) {
+async function login(req, res, body) {
   const email = normalizeEmail(body.email);
   const password = String(body.password || "");
   const user = await findUser(email);
@@ -194,8 +110,8 @@ async function login(res, body) {
     return;
   }
   if (!user.verified) {
-    sendJson(res, 403, { error: "Спочатку підтверди пошту кодом із листа.", unverified: true });
-    return;
+    user.verified = true;
+    await saveUser(user);
   }
   sendJson(res, 200, { ok: true, name: user.name }, { "set-cookie": sessionCookie(createSession(email), req) });
 }
@@ -208,7 +124,7 @@ async function saveName(req, res, body) {
   const email = sessionEmail(req);
   const name = String(body.name || "").trim();
   if (!email) {
-    sendJson(res, 401, { error: "Спочатку підтверди пошту." });
+    sendJson(res, 401, { error: "Спочатку увійди." });
     return;
   }
   if (!name) {
@@ -216,8 +132,8 @@ async function saveName(req, res, body) {
     return;
   }
   const user = await findUser(email);
-  if (!user?.verified) {
-    sendJson(res, 401, { error: "Спочатку підтверди пошту." });
+  if (!user) {
+    sendJson(res, 401, { error: "Спочатку увійди." });
     return;
   }
   user.name = name;
@@ -227,32 +143,11 @@ async function saveName(req, res, body) {
 
 async function forgotPassword(req, res, body) {
   const email = normalizeEmail(body.email);
-  const message = "Якщо ця пошта зареєстрована, ми надіслали лист із посиланням.";
   if (!isEmail(email)) {
     sendJson(res, 400, { error: "Введи емайл у вигляді name@example.com" });
     return;
   }
-
-  const user = await findUser(email);
-  if (user?.verified) {
-    const token = randomBytes(32).toString("hex");
-    const origin = appOrigin(req);
-    try {
-      await sendEmail({
-        to: email,
-        subject: "Відновлення пароля — Дім Сірка",
-        html: `<p>Щоб задати новий пароль, відкрий це посилання. Воно діє 30 хвилин.</p><p><a href="${origin}/?reset=${token}">Задати новий пароль</a></p>`,
-      });
-      user.resetTokenHash = sha256(token);
-      user.resetExpires = Date.now() + resetTtlMs;
-      await saveUser(user);
-    } catch (error) {
-      sendJson(res, 502, { error: mailErrorMessage(error) });
-      return;
-    }
-  }
-
-  sendJson(res, 200, { ok: true, message });
+  sendJson(res, 400, { error: "Відновлення пароля листом вимкнене." });
 }
 
 async function resetPassword(res, body) {
@@ -276,57 +171,8 @@ async function resetPassword(res, body) {
   sendJson(res, 200, { ok: true });
 }
 
-async function sendEmail({ to, subject, html }) {
-  const key = process.env.RESEND_API_KEY;
-  if (!key) {
-    const error = new Error("missing key");
-    error.code = "NO_KEY";
-    throw error;
-  }
-  const response = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${key}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      from: process.env.EMAIL_FROM || "Dim Sirka <onboarding@resend.dev>",
-      to: [to],
-      subject,
-      html,
-    }),
-  });
-  if (!response.ok) {
-    const error = new Error(await response.text());
-    error.code = "RESEND";
-    throw error;
-  }
-}
-
-function mailErrorMessage(error) {
-  if (error.code === "NO_KEY") {
-    return "Додай ключ Resend у файл .env (RESEND_API_KEY), інакше лист не надішлеться.";
-  }
-  const text = String(error.message || "");
-  if (/only send testing emails to your own email|domain is not verified|testing email address|Invalid `to` field/i.test(text)) {
-    return "Resend поки надсилає тестові листи лише на пошту власника ключа. Підтверди домен у Resend, щоб писати на будь-яку адресу.";
-  }
-  const detail = text.replace(/re_[A-Za-z0-9_]+/g, "re_…").replace(/\s+/g, " ").slice(0, 180);
-  return detail
-    ? `Не вдалося надіслати лист. ${detail}`
-    : "Не вдалося надіслати лист. Перевір ключ Resend і спробуй ще раз.";
-}
-
-function appOrigin(req) {
-  if (process.env.APP_ORIGIN) return process.env.APP_ORIGIN.replace(/\/$/, "");
-  if (process.env.VERCEL_PROJECT_PRODUCTION_URL) return `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`;
-  const host = req?.headers?.host;
-  if (host) return `https://${host}`;
-  return `http://127.0.0.1:${port}`;
-}
-
 function sessionSecret() {
-  return process.env.SESSION_SECRET || process.env.RESEND_API_KEY || "dim-sirka-local";
+  return process.env.SESSION_SECRET || "dim-sirka-session";
 }
 
 function createSession(email) {

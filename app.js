@@ -553,10 +553,8 @@ screens.register.addEventListener("submit", (event) => {
     try {
       await post("/api/register", { email, password });
       pendingEmail = email;
-      document.querySelector("#verify-note").textContent = `Ми надіслали код на ${email}. Він діє 15 хвилин.`;
-      document.querySelector("#verify-code").value = "";
-      setMessage("#verify-error", "");
-      show("verify");
+      profileEmail = email;
+      show("name");
     } catch (error) {
       setMessage("#register-error", error.message);
     }
@@ -624,11 +622,6 @@ screens.login.addEventListener("submit", (event) => {
       show(homeScreen());
     } catch (error) {
       setMessage("#login-error", error.message);
-      if (error.unverified) {
-        pendingEmail = email;
-        document.querySelector("#verify-note").textContent = `Ми вже надсилали код на ${email}. Можеш ввести його або надіслати новий.`;
-        show("verify");
-      }
     }
   });
 });
