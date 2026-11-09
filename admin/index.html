@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="uk">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Адмінка — Дім Сірка</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Urbanist:wght@600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/admin/admin.css?v=2" />
+  </head>
+  <body>
+    <section id="desktop-only" class="gate" hidden>
+      <div class="gate-card">
+        <img src="/assets/logo-wordmark.svg" alt="Дім Сірка" />
+        <h1>Адмінка відкривається на комп’ютері</h1>
+        <p>Розшир вікно браузера. Ця сторінка не входить у телефонну апку.</p>
+      </div>
+    </section>
+
+    <div id="admin-app" class="admin">
+      <aside class="sidebar">
+        <img class="wordmark" src="/assets/logo-wordmark.svg" alt="Дім Сірка" />
+        <p class="sidebar-kicker">Адмінка</p>
+        <span class="sidebar-item">Тваринки</span>
+      </aside>
+
+      <main class="board">
+        <header class="board-head">
+          <div>
+            <h1>Тваринки</h1>
+            <p>Нова картка з’являється в притулку апки. Параметри читають ті самі фільтри.</p>
+          </div>
+        </header>
+
+        <div class="columns">
+          <form id="animal-form" class="card">
+            <h2>Нова тваринка</h2>
+            <div class="photos">
+              <div id="photo-stage" class="photo-stage">
+                <button type="button" id="photo-add" class="photo-empty">Додати фото</button>
+              </div>
+              <div id="photo-tools" class="photo-tools" hidden>
+                <button type="button" id="zoom-out" aria-label="Зменшити">−</button>
+                <input id="zoom" type="range" min="1" max="3" step="0.01" value="1" aria-label="Масштаб" />
+                <button type="button" id="zoom-in" aria-label="Збільшити">+</button>
+                <button type="button" id="photo-remove">Прибрати</button>
+              </div>
+              <div id="photo-strip" class="photo-strip"></div>
+              <input id="photo" type="file" accept="image/jpeg,image/png,image/webp" multiple hidden />
+            </div>
+
+            <label class="field">
+              Ім’я
+              <input id="name" name="name" maxlength="40" required />
+            </label>
+
+            <fieldset class="choice">
+              <legend>Вид</legend>
+              <div class="chips" data-field="kind">
+                <button type="button" class="chip is-selected" data-value="dog">Собаки</button>
+                <button type="button" class="chip" data-value="cat">Коти</button>
+              </div>
+            </fieldset>
+            <fieldset class="choice">
+              <legend>Стать</legend>
+              <div class="chips" data-field="sex">
+                <button type="button" class="chip is-selected" data-value="Хлопчик">Хлопчик</button>
+                <button type="button" class="chip" data-value="Дівчинка">Дівчинка</button>
+              </div>
+            </fieldset>
+            <fieldset class="choice">
+              <legend>Здоров’я</legend>
+              <div class="chips" data-field="healthKey">
+                <button type="button" class="chip is-selected" data-value="healthy">Здоровий</button>
+                <button type="button" class="chip" data-value="treatment">На лікуванні</button>
+              </div>
+            </fieldset>
+
+            <label class="field">
+              Вік, років
+              <input id="years" name="years" inputmode="decimal" placeholder="3 або 0.25" required />
+            </label>
+            <label class="field">
+              Ціль, грн
+              <input id="goal" name="goal" inputmode="numeric" required />
+            </label>
+
+            <fieldset class="choice">
+              <legend>Інше</legend>
+              <div class="chips" data-field="tags">
+                <button type="button" class="chip" data-value="war">Постраждалі від війни</button>
+                <button type="button" class="chip" data-value="violence">Постраждалі від жорстокості</button>
+                <button type="button" class="chip" data-value="adopt">Можна забрати додому</button>
+                <button type="button" class="chip" data-value="no-curator">Без кураторів</button>
+              </div>
+            </fieldset>
+            <label class="full-care">
+              <input id="full-care" type="checkbox" />
+              Тільки повне кураторство
+            </label>
+
+            <label class="field">
+              Історія
+              <textarea id="story-lead" rows="3" maxlength="500"></textarea>
+            </label>
+            <p id="form-error" class="form-error" hidden></p>
+            <button class="submit" type="submit">Опублікувати в апці</button>
+          </form>
+
+          <section class="card list-card">
+            <h2>Додані в апку</h2>
+            <div id="animal-list" class="animal-list"></div>
+          </section>
+        </div>
+      </main>
+    </div>
+    <script src="/admin/admin.js?v=2"></script>
+  </body>
+</html>
