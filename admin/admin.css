@@ -82,13 +82,27 @@ textarea {
   text-transform: uppercase;
 }
 
+.sidebar-nav {
+  display: grid;
+  gap: 8px;
+}
+
 .sidebar-item {
   display: block;
+  width: 100%;
   padding: 12px 14px;
+  border: 0;
   border-radius: 16px;
+  background: transparent;
+  color: #171717;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+.sidebar-item.is-selected {
   background: #f6e9d5;
   color: #5c330f;
-  font-weight: 600;
 }
 
 .board {
@@ -342,6 +356,62 @@ textarea {
   margin: 0;
   color: rgba(0, 0, 0, 0.6);
   line-height: 1.5;
+}
+
+.people-list {
+  display: grid;
+  gap: 12px;
+  margin-top: 24px;
+}
+
+.person-row {
+  display: grid;
+  grid-template-columns: 56px 1fr;
+  gap: 16px;
+  align-items: start;
+  padding: 18px;
+  border-radius: 20px;
+  background: #fff;
+}
+
+.person-mark {
+  display: grid;
+  width: 56px;
+  height: 56px;
+  place-items: center;
+  border-radius: 16px;
+  background: #f6e9d5;
+  color: #5c330f;
+  font-family: Urbanist, Inter, sans-serif;
+  font-size: 22px;
+  font-weight: 700;
+}
+
+.person-row strong {
+  display: block;
+  font-family: Urbanist, Inter, sans-serif;
+  font-size: 20px;
+}
+
+.person-facts {
+  display: grid;
+  gap: 6px;
+  margin: 10px 0 0;
+}
+
+.person-facts div {
+  display: grid;
+  grid-template-columns: 140px 1fr;
+  gap: 12px;
+}
+
+.person-facts dt {
+  margin: 0;
+  color: rgba(0, 0, 0, 0.45);
+}
+
+.person-facts dd {
+  margin: 0;
 }
 
 @media (max-width: 959px) {

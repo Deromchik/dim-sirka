@@ -23,6 +23,10 @@ export default async function handleRequest(req, res) {
       sendJson(res, 200, { animals: readAnimals() });
       return;
     }
+    if (req.method === "GET" && url.pathname === "/api/users") {
+      await listProfiles(res);
+      return;
+    }
     if (req.method === "POST" && url.pathname === "/api/animals") {
       await createAnimal(req, res);
       return;
@@ -137,8 +141,22 @@ async function saveName(req, res, body) {
     return;
   }
   user.name = name;
+  if ("phone" in body) user.phone = String(body.phone || "").trim();
   await saveUser(user);
-  sendJson(res, 200, { ok: true, name });
+  sendJson(res, 200, { ok: true, name, phone: user.phone || "" });
+}
+
+async function listProfiles(res) {
+  const users = await readUsers();
+  const people = users
+    .filter((user) => String(user.name || "").trim())
+    .map((user) => ({
+      name: user.name,
+      email: user.email,
+      phone: user.phone || "",
+      verified: Boolean(user.verified),
+    }));
+  sendJson(res, 200, { people });
 }
 
 async function forgotPassword(req, res, body) {

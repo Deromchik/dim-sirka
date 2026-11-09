@@ -305,4 +305,69 @@ async function loadAnimals() {
   }
 }
 
+document.querySelector(".sidebar-nav").addEventListener("click", (event) => {
+  const button = event.target.closest("[data-panel]");
+  if (!button) return;
+  const panel = button.dataset.panel;
+  for (const item of document.querySelectorAll(".sidebar-item")) {
+    item.classList.toggle("is-selected", item === button);
+  }
+  document.querySelector("#panel-animals").hidden = panel !== "animals";
+  document.querySelector("#panel-people").hidden = panel !== "people";
+  if (panel === "people") loadPeople();
+});
+
+async function loadPeople() {
+  const peopleList = document.querySelector("#people-list");
+  peopleList.replaceChildren();
+  let people = [];
+  try {
+    const response = await fetch("/api/users");
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || "Не вдалося завантажити людей.");
+    people = data.people || [];
+  } catch (error) {
+    const empty = document.createElement("p");
+    empty.className = "empty";
+    empty.textContent = error.message || "Немає зв’язку з сервером.";
+    peopleList.append(empty);
+    return;
+  }
+  if (!people.length) {
+    const empty = document.createElement("p");
+    empty.className = "empty";
+    empty.textContent = "Ще немає користувачів із створеним профілем.";
+    peopleList.append(empty);
+    return;
+  }
+  for (const person of people) {
+    const row = document.createElement("article");
+    row.className = "person-row";
+    const mark = document.createElement("span");
+    mark.className = "person-mark";
+    mark.textContent = person.name.trim().charAt(0).toUpperCase() || "?";
+    const text = document.createElement("div");
+    const name = document.createElement("strong");
+    name.textContent = person.name;
+    const facts = document.createElement("dl");
+    facts.className = "person-facts";
+    addFact(facts, "Email", person.email);
+    addFact(facts, "Телефон", person.phone || "Не вказано");
+    addFact(facts, "Підтвердження", person.verified ? "Підтверджений" : "Не підтверджений");
+    text.append(name, facts);
+    row.append(mark, text);
+    peopleList.append(row);
+  }
+}
+
+function addFact(list, label, value) {
+  const row = document.createElement("div");
+  const term = document.createElement("dt");
+  term.textContent = label;
+  const detail = document.createElement("dd");
+  detail.textContent = value;
+  row.append(term, detail);
+  list.append(row);
+}
+
 loadAnimals();

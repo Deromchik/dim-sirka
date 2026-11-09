@@ -783,7 +783,7 @@ document.querySelector("#profile-form").addEventListener("submit", (event) => {
   document.querySelector("#home-title").textContent = `Привіт, ${name}`;
   withButton(submitButton(event), async () => {
     try {
-      await post("/api/profile", { name });
+      await post("/api/profile", { name, phone: profilePhone });
     } catch (error) {
       const offline = String(error.message || "").includes("пошту");
       if (!offline) {
