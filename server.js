@@ -1,9 +1,10 @@
-import { createHash, randomBytes, randomInt, scrypt, timingSafeEqual } from "node:crypto";
+import { createHash, createHmac, randomBytes, randomInt, scrypt, timingSafeEqual } from "node:crypto";
 import { createReadStream, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
+import { BlobNotFoundError, get, put } from "@vercel/blob";
 
 const scryptAsync = promisify(scrypt);
 const root = process.env.VERCEL ? process.cwd() : path.dirname(fileURLToPath(import.meta.url));
@@ -17,7 +18,6 @@ const maxCodeAttempts = 5;
 
 loadEnv(path.join(root, ".env"));
 
-const sessions = new Map();
 let writeQueue = Promise.resolve();
 
 export default async function handleRequest(req, res) {
@@ -42,7 +42,7 @@ export default async function handleRequest(req, res) {
     sendJson(res, 405, { error: "Метод не підтримується" });
   } catch (error) {
     console.error(error);
-    sendJson(res, 500, { error: "Щось пішло не так" });
+    sendJson(res, 500, { error: error.publicMessage || "Щось пішло не так" });
   }
 }
 
@@ -149,7 +149,7 @@ async function verifyEmail(req, res, body) {
   user.verifyExpires = 0;
   user.verifyAttempts = 0;
   await saveUser(user);
-  sendJson(res, 200, { ok: true }, { "set-cookie": sessionCookie(createSession(email)) });
+  sendJson(res, 200, { ok: true }, { "set-cookie": sessionCookie(createSession(email), req) });
 }
 
 async function resendCode(res, body) {
@@ -197,13 +197,11 @@ async function login(res, body) {
     sendJson(res, 403, { error: "Спочатку підтверди пошту кодом із листа.", unverified: true });
     return;
   }
-  sendJson(res, 200, { ok: true, name: user.name }, { "set-cookie": sessionCookie(createSession(email)) });
+  sendJson(res, 200, { ok: true, name: user.name }, { "set-cookie": sessionCookie(createSession(email), req) });
 }
 
 function logout(req, res) {
-  const token = readCookie(req, "session");
-  if (token) sessions.delete(token);
-  sendJson(res, 200, { ok: true }, { "set-cookie": "session=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0" });
+  sendJson(res, 200, { ok: true }, { "set-cookie": clearSessionCookie(req) });
 }
 
 async function saveName(req, res, body) {
@@ -238,7 +236,7 @@ async function forgotPassword(req, res, body) {
   const user = await findUser(email);
   if (user?.verified) {
     const token = randomBytes(32).toString("hex");
-    const origin = process.env.APP_ORIGIN || `http://127.0.0.1:${port}`;
+    const origin = appOrigin(req);
     try {
       await sendEmail({
         to: email,
@@ -316,18 +314,55 @@ function mailErrorMessage(error) {
   return "Не вдалося надіслати лист. Перевір ключ Resend і спробуй ще раз.";
 }
 
-function createSession(email) {
-  const token = randomBytes(32).toString("hex");
-  sessions.set(token, email);
-  return token;
+function appOrigin(req) {
+  if (process.env.APP_ORIGIN) return process.env.APP_ORIGIN.replace(/\/$/, "");
+  if (process.env.VERCEL_PROJECT_PRODUCTION_URL) return `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`;
+  const host = req?.headers?.host;
+  if (host) return `https://${host}`;
+  return `http://127.0.0.1:${port}`;
 }
 
-function sessionCookie(token) {
-  return `session=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${60 * 60 * 24 * 14}`;
+function sessionSecret() {
+  return process.env.SESSION_SECRET || process.env.RESEND_API_KEY || "dim-sirka-local";
+}
+
+function createSession(email) {
+  const payload = Buffer.from(JSON.stringify({ email, exp: Date.now() + 14 * 24 * 60 * 60 * 1000 })).toString("base64url");
+  const signature = createHmac("sha256", sessionSecret()).update(payload).digest("base64url");
+  return `${payload}.${signature}`;
+}
+
+function sessionCookie(token, req) {
+  const secure = secureCookie(req) ? "; Secure" : "";
+  return `session=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${60 * 60 * 24 * 14}${secure}`;
+}
+
+function clearSessionCookie(req) {
+  const secure = secureCookie(req) ? "; Secure" : "";
+  return `session=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0${secure}`;
+}
+
+function secureCookie(req) {
+  return Boolean(process.env.VERCEL) || req?.headers?.["x-forwarded-proto"] === "https";
 }
 
 function sessionEmail(req) {
-  return sessions.get(readCookie(req, "session")) || "";
+  const token = readCookie(req, "session");
+  const dot = token.lastIndexOf(".");
+  if (dot <= 0) return "";
+  const payload = token.slice(0, dot);
+  const signature = token.slice(dot + 1);
+  const expected = createHmac("sha256", sessionSecret()).update(payload).digest("base64url");
+  const actualBuffer = Buffer.from(signature);
+  const expectedBuffer = Buffer.from(expected);
+  if (actualBuffer.length !== expectedBuffer.length || !timingSafeEqual(actualBuffer, expectedBuffer)) return "";
+  try {
+    const data = JSON.parse(Buffer.from(payload, "base64url").toString("utf8"));
+    if (!data?.email || data.exp < Date.now()) return "";
+    return data.email;
+  } catch {
+    return "";
+  }
 }
 
 function readCookie(req, name) {
@@ -385,12 +420,9 @@ function readUsers() {
 
 function mutateUsers(change) {
   const run = writeQueue.then(async () => {
-    mkdirSync(dataDir, { recursive: true });
-    const users = existsSync(usersFile) ? JSON.parse(readFileSync(usersFile, "utf8")) : [];
+    const users = await loadUserList();
     const result = await change(users);
-    const temporary = `${usersFile}.tmp`;
-    writeFileSync(temporary, JSON.stringify(users, null, 2));
-    renameSync(temporary, usersFile);
+    await storeUserList(users);
     return result === undefined ? users : result;
   });
   writeQueue = run.then(
@@ -398,6 +430,48 @@ function mutateUsers(change) {
     () => undefined,
   );
   return run;
+}
+
+async function loadUserList() {
+  if (process.env.BLOB_READ_WRITE_TOKEN) {
+    try {
+      const result = await get("users.json", { access: "private", useCache: false });
+      if (!result.stream) return [];
+      const parsed = JSON.parse(await new Response(result.stream).text());
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (error) {
+      if (error instanceof BlobNotFoundError) return [];
+      throw error;
+    }
+  }
+  if (process.env.VERCEL) {
+    const error = new Error("missing blob");
+    error.publicMessage = "Сховище акаунтів ще не підключене.";
+    throw error;
+  }
+  if (!existsSync(usersFile)) return [];
+  return JSON.parse(readFileSync(usersFile, "utf8"));
+}
+
+async function storeUserList(users) {
+  const payload = JSON.stringify(users, null, 2);
+  if (process.env.BLOB_READ_WRITE_TOKEN) {
+    await put("users.json", payload, {
+      access: "private",
+      allowOverwrite: true,
+      contentType: "application/json",
+    });
+    return;
+  }
+  if (process.env.VERCEL) {
+    const error = new Error("missing blob");
+    error.publicMessage = "Сховище акаунтів ще не підключене.";
+    throw error;
+  }
+  mkdirSync(dataDir, { recursive: true });
+  const temporary = `${usersFile}.tmp`;
+  writeFileSync(temporary, payload);
+  renameSync(temporary, usersFile);
 }
 
 const animalsFile = path.join(dataDir, "animals.json");
@@ -531,6 +605,16 @@ async function createAnimal(req, res) {
 }
 
 function readBody(req, limit = 10_000) {
+  if (typeof req.body === "string") {
+    try {
+      return Promise.resolve(JSON.parse(req.body));
+    } catch {
+      return Promise.resolve({});
+    }
+  }
+  if (req.body && typeof req.body === "object" && !Buffer.isBuffer(req.body)) {
+    return Promise.resolve(req.body);
+  }
   return new Promise((resolve, reject) => {
     const chunks = [];
     let size = 0;

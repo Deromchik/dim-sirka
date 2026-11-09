@@ -1,6 +1,9 @@
 .env
+.env.local
+.env*.local
 data/
 assets/uploads/
 node_modules
 dist
+.vercel
 .DS_Store
