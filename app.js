@@ -1,5 +1,18 @@
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+function fitViewport() {
+  const viewport = window.visualViewport;
+  const heights = [window.innerHeight, viewport && viewport.height].filter((value) => value > 0);
+  const height = Math.round(Math.min(...heights));
+  document.documentElement.style.setProperty("--app-height", `${height}px`);
+}
+
+fitViewport();
+window.addEventListener("resize", fitViewport);
+window.addEventListener("orientationchange", fitViewport);
+window.visualViewport?.addEventListener("resize", fitViewport);
+window.visualViewport?.addEventListener("scroll", fitViewport);
+
 const screens = {
   welcome: document.querySelector("#welcome"),
   register: document.querySelector("#register"),

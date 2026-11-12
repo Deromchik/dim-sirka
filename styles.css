@@ -2210,16 +2210,64 @@ input {
 }
 
 @media (max-width: 440px) {
+  html,
+  body {
+    height: var(--app-height, 100svh);
+    overflow: hidden;
+  }
+
   .stage {
+    height: var(--app-height, 100svh);
+    max-height: var(--app-height, 100svh);
     padding: 0;
+    overflow: hidden;
   }
 
   .phone {
-    position: static;
+    position: fixed;
+    top: 0;
+    left: 0;
     width: 100%;
-    height: 100dvh;
+    height: var(--app-height, 100svh);
+    max-height: var(--app-height, 100svh);
     border-radius: 0;
     box-shadow: none;
     transform: none;
+  }
+
+  .welcome {
+    gap: 12px;
+    padding: 8px 20px calc(16px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .logo-card {
+    display: flex;
+    flex: 1 1 0;
+    align-items: center;
+    justify-content: center;
+    min-height: 0;
+  }
+
+  .logo-card img {
+    width: auto;
+    height: 100%;
+    max-width: 100%;
+    object-fit: contain;
+  }
+
+  .welcome-title,
+  .btn-welcome,
+  .login-prompt {
+    flex: none;
+  }
+
+  .welcome-title {
+    padding: 0;
+    font-size: clamp(24px, 7.2vw, 32px);
+  }
+
+  .spacer {
+    flex: 1 1 0;
+    min-height: 8px;
   }
 }
